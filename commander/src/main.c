@@ -1,3 +1,5 @@
+#include "network.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,13 +57,31 @@ long get_choice(char *choice){
     return ret;
 }
 
+void free_context(struct Context *ctx) {
+    if (ctx->runner_ip != NULL) {
+        free(ctx->runner_ip);
+    }
+}
+
 int main(int argc, char *argv[]){
     int run = 1;
     char ip_buffer[MAX_IP_LEN] = "";
     char input_buffer[MAX_INPUT_LEN];
 
+    struct Context ctx;
+    memset(&ctx, 0, sizeof(ctx));
+
     while (prompt_ip(ip_buffer) != 0){
         fprintf(stderr, "Error reading client IP. Try again.\n");
+    }
+
+    ctx.runner_ip = calloc(0, MAX_IP_LEN);
+    memcpy(ctx.runner_ip, ip_buffer, MAX_IP_LEN);
+
+    int ret = perform_knock(&ctx);
+    if (ret == -1) {
+        free_context(&ctx);
+        return -1;
     }
 
     long choice;
@@ -96,13 +116,13 @@ int main(int argc, char *argv[]){
                 printf("Send file\n");
                 break;
             case WATCH_FILE:
-                prinf("Watching file...\n");
+                printf("Watching file...\n");
                 break;
             case WATCH_DIR:
-                prinf("Watching dir...\n");
+                printf("Watching dir...\n");
                 break;
             case REMOTE_RUN:
-                prinf("Running remotely\n");
+                printf("Running remotely\n");
                 break;
             case DISCONNECT:
                 return EXIT_SUCCESS;

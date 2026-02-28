@@ -1,6 +1,6 @@
 #include "fsm.h"
 
-int main(){
+int main() {
     Context ctx = {0};
     ctx.state = state_init;
     int run = 1;
@@ -9,7 +9,7 @@ int main(){
 
     while(run){
         Event e = wait_next_event(&ctx);
-        if (e == EV_SHUTDOWN) break;
+        if (e == EV_SHUTDOWN) return 0;
         ctx.state(&ctx, e);
     }
 

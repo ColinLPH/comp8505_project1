@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -36,16 +37,11 @@ void state_sleep(struct Context *ctx, Event e);
 void state_running(struct Context *ctx, Event e);
 void state_uninstall(struct Context *ctx, Event e);
 
-struct KnockAlarm {
-    int progress;
-    time_t last_knock;
-};
-
 typedef struct Context {
+    int knock_alarm_fd;
     int raw_sock_fd;
-    struct KnockAlarm knock_alarm;
     State state;
-    char *commander_ip;
+    char commander_ip[INET_ADDRSTRLEN];
 } Context;
 
 static void transition(Context *ctx, State next){
@@ -56,21 +52,19 @@ void state_init(Context *ctx, Event e){
     switch (e){
         case EV_START:
             printf("Setting up...\n");
-            ctx->raw_sock_fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
-            if (ctx->raw_sock_fd < 0){
+            ctx->knock_alarm_fd = socket(AF_INET, SOCK_DGRAM, 0);
+            if (ctx->knock_alarm_fd < 0){
                 // handle error, fsm transition to error 
-                perror("socket");
-                return;
+                perror("knock alarm socket");
+                break;
             }
-            ctx->knock_alarm.progress = 0;
-            ctx->knock_alarm.last_knock = 0;
-            return;
+            break;
         case EV_SETUP_FIN:
             printf("Setting done...\n");
             transition(ctx, state_sleep);
-            return;
+            break;
         default:
-            return;
+            break;
     }
 }
 
@@ -80,14 +74,18 @@ void state_sleep(Context *ctx, Event e){
         case EV_KNOCKED:
             printf("Knocked..\n");
             transition(ctx, state_running);
-            return;
+            break;
+
+        case EV_NONE:
+            printf("Nothing happened\n");
+            break;
 
         case EV_ERROR:
-            transition(ctx, state_init);
-            return;
+            transition(ctx, state_init); // probably shouldn't transition to state_init for better error handling
+            break;
 
         default:
-            return;
+            break;
     }
 }
 
@@ -108,78 +106,86 @@ void state_running(Context *ctx, Event e){
     }
 }
 
-Event knock_poll(Context *ctx){
-    struct KnockAlarm *ka = &ctx->knock_alarm;
+int listen_knock(Context *ctx, int port, int timeout_sec) {
+    int fd = socket(AF_INET, SOCK_DGRAM, 0);
 
-    uint8_t buffer[BUF_SIZE];
+    struct sockaddr_in addr = {0};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = INADDR_ANY;
 
-    ssize_t ret = recv(ctx->raw_sock_fd, buffer, sizeof(buffer), MSG_DONTWAIT);
-    if(ret < 0){
-        if (errno == EAGAIN || errno == EWOULDBLOCK){
-            return EV_NONE;
-        }
-        perror("recv");
-        return EV_ERROR;
+    bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+
+    struct timeval tv = {
+        .tv_sec = timeout_sec,
+        .tv_usec = 0
+    };
+
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+
+    char buffer[BUF_SIZE];
+    struct sockaddr_in sender;
+    socklen_t sender_len = sizeof(sender);
+
+    ssize_t ret = recvfrom(fd, buffer, sizeof(buffer), 0, (struct sockaddr *)&sender, &sender_len);
+
+    if (ret < 0) {
+        close(fd);
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+            return 0; // timeout
+        return -1;    // error
     }
 
-    struct iphdr *ip = (struct iphdr *)buffer;
-    if(ip->protocol != IPPROTO_UDP){
+    if (port == KNOCK3) {
+        inet_ntop(AF_INET, &sender.sin_addr, &ctx->commander_ip, INET_ADDRSTRLEN);
+        printf("Commander ip: %s\n", ctx->commander_ip);
+    }
+
+    close(fd);
+
+    return 1;
+
+}
+
+Event knock_poll(Context *ctx){
+
+    printf("Waiting for knock1\n");
+    int ret = listen_knock(ctx, KNOCK1, 0);
+    if (ret < 0) {
+        return EV_ERROR;
+    } else if (ret == 0) {
         return EV_NONE;
     }
 
-    unsigned short iphdrlen = ip->ihl * 4;
-    struct udphdr *udp = (struct udphdr *)(buffer + iphdrlen);
-
-    int dest_port = ntohs(udp->dest);
-    time_t now = time(NULL);
-
-    if (ka->progress > 0 &&
-        now - ka->last_knock > KNOCK_TIMEOUT)
-    {
-        ka->progress = 0;
+    printf("Waiting for knock2\n");
+    ret = listen_knock(ctx, KNOCK2, KNOCK_TIMEOUT);
+    if (ret < 0) {
+        return EV_ERROR;
+    } else if (ret == 0) {
+        return EV_NONE;
     }
 
-    switch (ka->progress) {
-
-        case 0:
-            if (dest_port == KNOCK1) {
-                ka->progress = 1;
-                ka->last_knock = now;
-            }
-            break;
-
-        case 1:
-            if (dest_port == KNOCK2) {
-                ka->progress = 2;
-                ka->last_knock = now;
-            } else {
-                ka->progress = 0;
-            }
-            break;
-
-        case 2:
-            if (dest_port == KNOCK3) {
-                ka->progress = 0;
-                // add commander ip to context
-                return EV_KNOCKED;
-            } else {
-                ka->progress = 0;
-            }
-            break;
+    printf("Waiting for knock3\n");
+    ret = listen_knock(ctx, KNOCK3, KNOCK_TIMEOUT);
+    if (ret < 0) {
+        return EV_ERROR;
+    } else if (ret == 0) {
+        return EV_NONE;
     }
 
-    return EV_NONE;
+    return EV_KNOCKED;
+
 }
 
 Event wait_next_event(Context *ctx){
     if (ctx->state == state_init){
         return EV_SETUP_FIN;
+    }
 
-    }
     if (ctx->state == state_sleep){
-        sleep(5);
-        return EV_KNOCKED;
+        return knock_poll(ctx);
     }
+
     if (ctx->state == state_running){
         return EV_SHUTDOWN;
     }
