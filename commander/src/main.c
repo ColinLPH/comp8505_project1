@@ -75,11 +75,11 @@ int main(void){
     memcpy(ctx.runner_ip, ip_buffer, MAX_IP_LEN);
 
     printf("Performing knock sequence at %s\n", ctx.runner_ip);
-//    int ret = perform_knock(&ctx);
-//    if (ret != 0) {
-//        fprintf(stderr, "perform_knock error.\n");
-//        return -1;
-//    }
+   int ret = perform_knock(&ctx);
+   if (ret != 0) {
+       fprintf(stderr, "perform_knock error.\n");
+       return -1;
+   }
     printf("Knock sequence successfully completed.\n");
 
     long choice;
