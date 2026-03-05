@@ -7,7 +7,8 @@ struct Context {
     int covert_fd;
     uint16_t cmd_seq_num;
     uint16_t rep_seq_num;
-    char runner_ip[INET_ADDRSTRLEN];
+    char commander_ip[INET_ADDRSTRLEN];
 };
 
-#endif //CONTEXT_H
+
+#endif // CONTEXT_H

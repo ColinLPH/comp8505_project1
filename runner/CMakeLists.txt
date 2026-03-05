@@ -11,6 +11,8 @@ file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS
 
 add_executable(runner ${SRC_FILES})
 
+target_compile_definitions(runner PRIVATE _GNU_SOURCE)
+
 target_include_directories(runner
     PRIVATE
     ${CMAKE_SOURCE_DIR}/include
@@ -21,6 +23,4 @@ if(MSVC)
   target_compile_options(runner PRIVATE /W4)
 else()
   target_compile_options(runner PRIVATE -Wall -Wextra -Wpedantic)
-  # Link with libcrypt on Unix/Linux if needed
-  # target_link_libraries(runner PRIVATE crypt)
 endif()
