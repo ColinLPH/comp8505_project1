@@ -1,2 +1,5 @@
 /commander/build
+/commander/cmake-build-debug
+
 /runner/build
+/runner/cmake-build-debug

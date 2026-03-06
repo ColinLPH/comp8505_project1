@@ -92,8 +92,9 @@ int main(void){
     }
     ctx.cmd_seq_num = 0;
     ctx.rep_seq_num = 0;
-
-    srand((unsigned int)time(NULL));
+    memset(ctx.random_pool, 0, POOL_SIZE);
+    ctx.pool_pos = 0;
+    ctx.pool_rem = POOL_SIZE;
 
     while(run){
         print_menu();
@@ -135,8 +136,12 @@ int main(void){
                 printf("Running remotely\n");
                 break;
             case DISCONNECT:
-                return EXIT_SUCCESS;
+                run = 0;
+                break;
+            default:
+                return EXIT_FAILURE;
         }
     }
 
+    return EXIT_SUCCESS;
 }

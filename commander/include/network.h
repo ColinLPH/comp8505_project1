@@ -11,7 +11,7 @@ enum packet_type {
 
 int setup_covert_fd(void);
 
-int perform_knock(struct Context *ctx);
+int perform_knock(const struct Context *ctx);
 
 unsigned short checksum(void *b, int len);
 int send_packet(struct Context *ctx, const char *ip_src_addr);

