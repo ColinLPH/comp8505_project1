@@ -13,6 +13,8 @@
 
 #define HEADER_SIZE 28 //mininum ipv4 header + udp header
 
+void print_packet_info(uint8_t *packet);
+
 int setup_covert_fd(void);
 unsigned short checksum(void *b, int len);
 int send_packet(struct Context *ctx, const char *ip_src_addr);

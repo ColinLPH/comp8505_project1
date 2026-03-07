@@ -93,6 +93,7 @@ int main(void){
     ctx.cmd_seq_num = 0;
     ctx.rep_seq_num = 0;
     memset(ctx.random_pool, 0, POOL_SIZE);
+    refill_pool(&ctx);
     ctx.pool_pos = 0;
     ctx.pool_rem = POOL_SIZE;
 

@@ -3,14 +3,12 @@
 #include "commands.h"
 
 #include <errno.h>
+#include <arpa/inet.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
-#include <time.h>
 #include <unistd.h>
 
 int runner(struct Context *ctx) {
@@ -30,7 +28,7 @@ int runner(struct Context *ctx) {
         return -1;
     }
 
-    char buffer[BUF_SIZE];
+    uint8_t buffer[BUF_SIZE];
     ssize_t ret = recv(ctx->covert_fd, buffer, BUF_SIZE, 0);
     if (ret < 0) {
         fprintf(stderr, "recv error\n");
@@ -38,13 +36,15 @@ int runner(struct Context *ctx) {
         return -1;
     }
 
-    struct iphdr *ip = (struct iphdr *)buffer;
+    print_packet_info(buffer);
+
+    const struct iphdr *ip = (struct iphdr *)buffer;
     if (ip->protocol != IPPROTO_UDP) {
         fprintf(stderr, "packet received is not UDP\n");
         return -1;
     }
 
-    struct udphdr *udp = (struct udphdr *)(buffer + ip->ihl*4);
+    const struct udphdr *udp = (struct udphdr *)(buffer + ip->ihl*4);
 
     printf("Packet secret payload: %s\n", inet_ntoa(*(struct in_addr *)&ip->saddr));
     printf("Packet's seq num: %u\n", ntohs(udp->source));

