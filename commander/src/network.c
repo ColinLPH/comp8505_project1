@@ -6,6 +6,7 @@
 #include <netinet/ip.h>
 #include <netinet/udp.h>
 #include <stdio.h>
+#include <time.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -32,32 +33,6 @@ int setup_covert_fd(void) {
     const int one = 1;
     if (setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0) {
         fprintf(stderr, "setsockopt(IPPROTO_IP, IP_HDRINCL) failed\n");
-        return -1;
-    }
-
-    struct sock_filter code[] = {
-
-        BPF_STMT(BPF_LD  | BPF_B | BPF_ABS, 9),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, IPPROTO_UDP, 0, 5),
-
-        BPF_STMT(BPF_LD  | BPF_B | BPF_ABS, 0),
-        BPF_STMT(BPF_ALU | BPF_AND | BPF_K, 0x0F),
-        BPF_STMT(BPF_ALU | BPF_LSH | BPF_K, 2),
-
-        BPF_STMT(BPF_LD  | BPF_H | BPF_IND, 2),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, htons(COVERT_CHAN), 0, 1),
-
-        BPF_STMT(BPF_RET | BPF_K, 0xFFFFFFFF),
-        BPF_STMT(BPF_RET | BPF_K, 0),
-    };
-
-    struct sock_fprog bpf = {
-        .len = sizeof(code) / sizeof(code[0]),
-        .filter = code,
-    };
-
-    if (setsockopt(fd, SOL_SOCKET, SO_ATTACH_FILTER, &bpf, sizeof(bpf)) < 0) {
-        fprintf(stderr, "setsockopt(SO_ATTACH_FILTER) failed\n");
         return -1;
     }
 
@@ -188,12 +163,24 @@ int send_packet(struct Context *ctx, const char *ip_src_addr) {
     dest.sin_port = htons(COVERT_CHAN);
     dest.sin_addr.s_addr = ip->daddr;
 
-    int ret = sendto(ctx->covert_fd, packet, pkt_len, 0, (struct sockaddr *)&dest, sizeof(dest));
+    const ssize_t ret = sendto(ctx->covert_fd, packet, pkt_len, 0, (struct sockaddr *)&dest, sizeof(dest));
     if (ret <= 0) {
         fprintf(stderr, "sento error\n");
     }
     print_packet_info(packet);
-    (ctx->cmd_seq_num)++;
+
+    if (ctx->cmd_seq_num == UINT16_MAX) {
+        ctx->cmd_seq_num = 0;
+    } else {
+        (ctx->cmd_seq_num)++;
+    }
+
+    struct timespec sleep_time;
+    sleep_time.tv_sec = 0;
+    sleep_time.tv_nsec = (rand_u8(ctx) + 200) * 1000000;
+
+    printf("Sleep time: %zu seconds\n", sleep_time.tv_sec/1000);
+    nanosleep(&sleep_time, NULL);
 
     return 0;
 }

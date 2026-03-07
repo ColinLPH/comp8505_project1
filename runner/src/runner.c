@@ -29,25 +29,30 @@ int runner(struct Context *ctx) {
     }
 
     uint8_t buffer[BUF_SIZE];
-    ssize_t ret = recv(ctx->covert_fd, buffer, BUF_SIZE, 0);
-    if (ret < 0) {
-        fprintf(stderr, "recv error\n");
-        close(ctx->covert_fd);
-        return -1;
+    while (1) {
+        ssize_t ret = recv(ctx->covert_fd, buffer, BUF_SIZE, 0);
+        if (ret < 0) {
+            fprintf(stderr, "recv error\n");
+            close(ctx->covert_fd);
+            return -1;
+        }
+
+
+        const struct iphdr *ip = (struct iphdr *)buffer;
+        if (ip->protocol != IPPROTO_UDP) {
+            fprintf(stderr, "packet received is not UDP\n");
+            return -1;
+        }
+
+        const struct udphdr *udp = (struct udphdr *)(buffer + ip->ihl*4);
+
+        if (ntohs(udp->dest) == COVERT_CHAN) {
+            // print_packet_info(buffer);
+            printf("Packet secret payload: %s\n", inet_ntoa(*(struct in_addr *)&ip->saddr));
+            printf("Packet's seq num: %u\n", ntohs(udp->source));
+        }
+
     }
-
-    print_packet_info(buffer);
-
-    const struct iphdr *ip = (struct iphdr *)buffer;
-    if (ip->protocol != IPPROTO_UDP) {
-        fprintf(stderr, "packet received is not UDP\n");
-        return -1;
-    }
-
-    const struct udphdr *udp = (struct udphdr *)(buffer + ip->ihl*4);
-
-    printf("Packet secret payload: %s\n", inet_ntoa(*(struct in_addr *)&ip->saddr));
-    printf("Packet's seq num: %u\n", ntohs(udp->source));
 
     return 0;
 }

@@ -83,32 +83,6 @@ int setup_covert_fd() {
         return -1;
     }
 
-    struct sock_filter code[] = {
-
-        BPF_STMT(BPF_LD  | BPF_B | BPF_ABS, 9),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, IPPROTO_UDP, 0, 5),
-
-        BPF_STMT(BPF_LD  | BPF_B | BPF_ABS, 0),
-        BPF_STMT(BPF_ALU | BPF_AND | BPF_K, 0x0F),
-        BPF_STMT(BPF_ALU | BPF_LSH | BPF_K, 2),
-
-        BPF_STMT(BPF_LD  | BPF_H | BPF_IND, 2),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, htons(COVERT_CHAN), 0, 1),
-
-        BPF_STMT(BPF_RET | BPF_K, 0xFFFFFFFF),
-        BPF_STMT(BPF_RET | BPF_K, 0),
-    };
-
-    struct sock_fprog bpf = {
-        .len = sizeof(code) / sizeof(code[0]),
-        .filter = code,
-    };
-
-    if (setsockopt(fd, SOL_SOCKET, SO_ATTACH_FILTER, &bpf, sizeof(bpf)) < 0) {
-        fprintf(stderr, "setsockopt(SO_ATTACH_FILTER) failed\n");
-        return -1;
-    }
-
     return fd;
 }
 
