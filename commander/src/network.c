@@ -120,15 +120,15 @@ void print_packet_info(uint8_t *packet) {
     printf("  Dest Port      : %u\n", ntohs(udp->dest));
     printf("  Length         : %u\n", udp_len);
 
-    printf("\nPayload (%u bytes):\n", payload_len);
-    for (uint16_t i = 0; i < payload_len; i++) {
-        printf("%02x ", payload[i]);
-        if ((i + 1) % 16 == 0)
-            printf("\n");
-    }
-
-    if (payload_len % 16 != 0)
-        printf("\n");
+    // printf("\nPayload (%u bytes):\n", payload_len);
+    // for (uint16_t i = 0; i < payload_len; i++) {
+    //     printf("%02x ", payload[i]);
+    //     if ((i + 1) % 16 == 0)
+    //         printf("\n");
+    // }
+    //
+    // if (payload_len % 16 != 0)
+    //     printf("\n");
 
     printf("---------------------------------------------------------\n");
 }

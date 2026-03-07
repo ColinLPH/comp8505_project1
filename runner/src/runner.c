@@ -57,13 +57,15 @@ int runner(struct Context *ctx) {
             uint8_t byte4 = 0;
 
             decode_ip(ip_buffer, &byte1, &byte2, &byte3, &byte4);
-            printf("Packet's seq num: %u\n", ntohs(udp->source));
+            printf("------------------Packet num: %u------------------\n", ntohs(udp->source));
+            printf("Full IP: %s\n", ip_buffer);
+            printf("Type: ");
             if (byte2 == 0) {
-                printf("Command received\n");
+                printf("Command\n");
             } else if (byte2 == 1) {
-                printf("Term received\n");
+                printf("Term\n");
             } else {
-                printf("Data received\n");
+                printf("Data\n");
                 printf("Packet secret data: %u %u\n", byte3, byte4);
             }
 
