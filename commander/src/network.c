@@ -177,9 +177,9 @@ int send_packet(struct Context *ctx, const char *ip_src_addr) {
 
     struct timespec sleep_time;
     sleep_time.tv_sec = 0;
-    sleep_time.tv_nsec = (rand_u8(ctx) + 200) * 1000000;
+    sleep_time.tv_nsec = (rand_u8(ctx) + 500) * 1000000;
 
-    printf("Sleep time: %zu seconds\n", sleep_time.tv_sec/1000);
+    printf("Sleep time: %zu milliseconds\n", sleep_time.tv_nsec / 1000000);
     nanosleep(&sleep_time, NULL);
 
     return 0;

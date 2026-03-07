@@ -66,7 +66,7 @@ int cmd_send_file(struct Context *ctx) {
         // while not end of string, get the next two bytes, encode, ship it
     len = strlen(file_path);
     for (size_t i = 0; i < len; i+=2) {
-        if (i == strlen(file_path)-1) {
+        if (i == len-1) {
             ret = encode_ip(ip_buffer, rand_u8(ctx), rand_u8(ctx),
                 file_path[i], 0);
         } else {

