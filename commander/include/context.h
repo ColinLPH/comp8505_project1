@@ -21,6 +21,7 @@ struct Context {
 
 void refill_pool(struct Context *ctx);
 uint8_t rand_u8(struct Context *ctx);
+uint8_t rand_ip_octet(struct Context *ctx);
 uint16_t rand_u16(struct Context *ctx);
 uint16_t rand_payload_size(struct Context *ctx);
 uint16_t rand_payload(struct Context *ctx, uint8_t *buffer);

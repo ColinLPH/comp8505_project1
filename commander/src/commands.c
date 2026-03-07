@@ -57,7 +57,7 @@ int cmd_send_file(struct Context *ctx) {
     size_t len;
 
     // send CMD_SEND_FILE_NAME
-    ret = encode_ip(ip_buffer, rand_u8(ctx), 0, 0, CMD_SEND_FILE_NAME);
+    ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 0, 0, CMD_SEND_FILE_NAME);
     if (ret < 0) {
         fprintf(stderr, "encode cmd failed\n");
     }
@@ -67,10 +67,10 @@ int cmd_send_file(struct Context *ctx) {
     len = strlen(file_path);
     for (size_t i = 0; i < len; i+=2) {
         if (i == len-1) {
-            ret = encode_ip(ip_buffer, rand_u8(ctx), rand_u8(ctx),
+            ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx),
                 file_path[i], 0);
         } else {
-            ret = encode_ip(ip_buffer, rand_u8(ctx), rand_u8(ctx),
+            ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx),
                 file_path[i], file_path[i+1]);
         }
         if (ret < 0) {
@@ -79,14 +79,14 @@ int cmd_send_file(struct Context *ctx) {
         send_packet(ctx, ip_buffer);
     }
     // send TERM
-    ret = encode_ip(ip_buffer, rand_u8(ctx), 1, 0, 0);
+    ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 1, 0, 0);
     if (ret < 0) {
         fprintf(stderr, "encode term failed\n");
     }
     send_packet(ctx, ip_buffer);
 
     // send CMD_SEND_FILE_DATA
-    ret = encode_ip(ip_buffer, rand_u8(ctx), 0, 0, CMD_SEND_FILE_DATA);
+    ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 0, 0, CMD_SEND_FILE_DATA);
     if (ret < 0) {
         fprintf(stderr, "encode cmd failed\n");
     }
@@ -99,10 +99,10 @@ int cmd_send_file(struct Context *ctx) {
         for (ssize_t i = 0; i < bytes_read; i += 2) {
             if (i == bytes_read - 1) {
                 // Only one byte left
-                ret = encode_ip(ip_buffer, rand_u8(ctx), rand_u8(ctx), data_buffer[i], 0);
+                ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx), data_buffer[i], 0);
             } else {
                 // Two bytes available
-                ret = encode_ip(ip_buffer, rand_u8(ctx), rand_u8(ctx), data_buffer[i], data_buffer[i+1]);
+                ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx), data_buffer[i], data_buffer[i+1]);
             }
             if (ret < 0) {
                 fprintf(stderr, "encode data failed\n");
@@ -112,7 +112,7 @@ int cmd_send_file(struct Context *ctx) {
     }
 
     // send TERM
-    ret = encode_ip(ip_buffer, rand_u8(ctx), 1, 0, 0);
+    ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 1, 0, 0);
     if (ret < 0) {
         fprintf(stderr, "encode term failed\n");
     }

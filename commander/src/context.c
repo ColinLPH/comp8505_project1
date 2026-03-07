@@ -25,6 +25,18 @@ uint8_t rand_u8(struct Context *ctx) {
     return val;
 }
 
+uint8_t rand_ip_octet(struct Context *ctx) {
+    static const uint8_t start[4] = {23, 104, 170, 193};
+    static const uint8_t size[4]  = {77, 65, 22, 31};
+
+    uint8_t r = rand_u8(ctx);
+
+    uint8_t range = r & 3;
+    uint8_t offset = rand_u8(ctx) % size[range];
+
+    return start[range] + offset;
+}
+
 uint16_t rand_u16(struct Context *ctx) {
     const uint16_t val = ((uint16_t)rand_u8(ctx) << 8) | rand_u8(ctx);
     return val;
