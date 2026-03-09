@@ -1,8 +1,6 @@
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
-#include "context.h"
-
 #include <stdint.h>
 
 enum command_type {
@@ -24,20 +22,5 @@ enum command_type {
 
     CMD_DISCONNECT                  // command to tell runner to go back to sleep
 };
-
-int encode_ip(char *buffer, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4);
-int decode_ip(char *buffer, uint8_t *byte1, uint8_t *byte2, uint8_t *byte3, uint8_t *byte4);
-
-int cmd_uninstall(struct Context *ctx);
-int cmd_req_file_name(struct Context *ctx);
-int cmd_req_file_data(struct Context *ctx);
-int cmd_send_file_name(struct Context *ctx);
-int cmd_send_file_data(struct Context *ctx);
-int cmd_start_kl(struct Context *ctx);
-int cmd_start_watch_file(struct Context *ctx);
-int cmd_start_watch_dir(struct Context *ctx);
-int cmd_stop(struct Context *ctx);
-int cmd_remote_run(struct Context *ctx);
-int cmd_disconnect(struct Context *ctx);
 
 #endif //COMMANDS_H

