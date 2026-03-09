@@ -120,11 +120,27 @@ int cmd_get_file(struct Context *ctx){
 
     char ip_buffer[IP_ADDR_LEN] = {0};
     int ret;
+    size_t len;
     ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 0, 0, CMD_REQ_FILE_NAME);
     if (ret < 0) {
         fprintf(stderr, "encode cmd failed\n");
     }
     send_packet(ctx, ip_buffer);
+
+    len = strlen(file_path);
+    for (size_t i = 0; i < len; i+=2) {
+        if (i == len-1) {
+            ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx),
+                file_path[i], 0);
+        } else {
+            ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx),
+                file_path[i], file_path[i+1]);
+        }
+        if (ret < 0) {
+            fprintf(stderr, "encode data failed\n");
+        }
+        send_packet(ctx, ip_buffer);
+    }
 
     ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 1, 0, 0);
     if (ret < 0) {
