@@ -37,9 +37,8 @@ void print_packet_info(uint8_t *packet) {
 
     uint16_t ip_len = ntohs(ip->tot_len);
     uint16_t udp_len = ntohs(udp->len);
-    uint16_t payload_len = udp_len - sizeof(struct udphdr);
 
-    printf("-----------------------Packet Info-----------------------\n");
+    printf("-----------------------Outgoing Packet Info-----------------------\n");
 
     printf("IP Header:\n");
     printf("  Version        : %u\n", ip->version);
@@ -56,16 +55,6 @@ void print_packet_info(uint8_t *packet) {
     printf("  Source Port    : %u\n", ntohs(udp->source));
     printf("  Dest Port      : %u\n", ntohs(udp->dest));
     printf("  Length         : %u\n", udp_len);
-
-    printf("\nPayload (%u bytes):\n", payload_len);
-    for (uint16_t i = 0; i < payload_len; i++) {
-        printf("%02x ", payload[i]);
-        if ((i + 1) % 16 == 0)
-            printf("\n");
-    }
-
-    if (payload_len % 16 != 0)
-        printf("\n");
 
     printf("---------------------------------------------------------\n");
 }
