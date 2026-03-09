@@ -4,6 +4,7 @@
 #include <netinet/ip.h>
 #include <netinet/udp.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -21,7 +22,7 @@
 #define IP_HDR_TOS 0
 #define IP_HDR_TTL 64
 
-#define MIN_SEND_PKT_WAIT 200
+#define MIN_SEND_PKT_WAIT 250
 #define USEC_TO_SEC 1000000
 
 int setup_covert_fd(void) {
@@ -175,3 +176,73 @@ int send_packet(struct Context *ctx, const char *ip_src_addr) {
 
     return 0;
 }
+
+int recv_file_data(struct Context *ctx, struct List *list) {
+    int is_term = 0;
+    int is_first = 1;
+    while (is_term == 0) {
+        uint8_t buffer[PKT_MAX_LEN];
+
+        ssize_t ret = recv(ctx->covert_fd, buffer, PKT_MAX_LEN, 0);
+        if (ret < 0) {
+            fprintf(stderr, "recv error\n");
+            close(ctx->covert_fd);
+            return -1;
+        }
+
+        const struct iphdr *ip = (struct iphdr *)buffer;
+        if (ip->protocol != IPPROTO_UDP) {
+            fprintf(stderr, "packet received is not UDP\n");
+            return -1;
+        }
+
+        const struct udphdr *udp = (struct udphdr *)(buffer + ip->ihl*4);
+
+        if (ntohs(udp->dest) == COVERT_CHAN) {
+            struct Blob *blob = calloc(1, sizeof(struct Blob));
+            if (is_first) {
+                list->head = blob;
+                list->tail = blob;
+                is_first = 0;
+            } else {
+                blob->prev = list->tail;
+                list->tail->next = blob;
+                list->tail = blob;
+            }
+
+            // print_packet_info(buffer);
+            char ip_buffer[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &ip->saddr, ip_buffer, sizeof(ip_buffer));
+
+            uint8_t byte1 = 0;
+            uint8_t byte2 = 0;
+            uint8_t byte3 = 0;
+            uint8_t byte4 = 0;
+
+            decode_ip(ip_buffer, &byte1, &byte2, &byte3, &byte4);
+            printf("------------------Packet num: %u------------------\n", ntohs(udp->source));
+            printf("Full IP: %s\n", ip_buffer);
+            printf("Type: ");
+            if (byte2 == 0) {
+                printf("Command\n");
+                list->type = byte4;
+            } else if (byte2 == 1) {
+                printf("Term\n");
+                is_term = 1;
+            } else {
+                printf("Data\n");
+                printf("Packet secret data: %u %u\n", byte3, byte4);
+                blob->data1 = byte3;
+                blob->data2 = byte4;
+            }
+
+            blob->seq_num = ntohs(udp->source);
+            blob->marked = 0;
+            list->list_size++;
+        }
+
+    }
+
+    return 0;
+}
+

