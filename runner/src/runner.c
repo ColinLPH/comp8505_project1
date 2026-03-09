@@ -97,7 +97,7 @@ int runner_recv(struct Context *ctx, struct List *list) {
             uint8_t byte4 = 0;
 
             decode_ip(ip_buffer, &byte1, &byte2, &byte3, &byte4);
-            printf("------------------IncoPacket num: %u------------------\n", ntohs(udp->source));
+            printf("------------------Incoming Packet Num: %u------------------\n", ntohs(udp->source));
             printf("Full IP: %s\n", ip_buffer);
             printf("Type: ");
             if (byte2 == 0) {
@@ -296,7 +296,7 @@ int cmd_remote_run(struct Context *ctx, struct List *list) {
     // Execute the command
     int ret = system(result);
 
-    // TODO: send output.txt
+    // send output.txt
 
     free(result);
     return ret;
