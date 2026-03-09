@@ -28,15 +28,15 @@ int runner(struct Context *ctx) {
         return -1;
     }
 
+    int run = 1;
     uint8_t buffer[BUF_SIZE];
-    while (1) {
+    while (run) {
         ssize_t ret = recv(ctx->covert_fd, buffer, BUF_SIZE, 0);
         if (ret < 0) {
             fprintf(stderr, "recv error\n");
             close(ctx->covert_fd);
             return -1;
         }
-
 
         const struct iphdr *ip = (struct iphdr *)buffer;
         if (ip->protocol != IPPROTO_UDP) {

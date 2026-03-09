@@ -30,6 +30,11 @@ enum command_type {
     CMD_DISCONNECT                  // command to tell runner to go back to sleep
 };
 
+
+int encode_ip(char *buffer, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4) {
+    return sprintf(buffer, "%u.%u.%u.%u", byte1, byte2, byte3, byte4);
+}
+
 int prompt_stdin(char *buffer, int buf_size) {
     if (fgets(buffer, buf_size, stdin) != NULL) {
         buffer[strcspn(buffer, "\n")] = '\0';
@@ -123,7 +128,32 @@ int cmd_send_file(struct Context *ctx) {
     return 0;
 }
 
-int encode_ip(char *buffer, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4) {
-    return sprintf(buffer, "%u.%u.%u.%u", byte1, byte2, byte3, byte4);
+int cmd_get_file(struct Context *ctx){
+    return 0;
+}
+
+int cmd_start_kl(struct Context *ctx){
+    return 0;
+}
+int cmd_watch_file(struct Context *ctx){
+    return 0;
+}
+int cmd_watch_dir(struct Context *ctx){
+    return 0;
+}
+int cmd_stop(struct Context *ctx){
+    return 0;
+}
+
+int cmd_remote_run(struct Context *ctx) {
+    return 0;
+}
+
+int cmd_disconnect(struct Context *ctx){
+    return 0;
+}
+
+int cmd_uninstall(struct Context *ctx){
+    return 0;
 }
 

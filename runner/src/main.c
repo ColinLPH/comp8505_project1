@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-int main() {
+int main(void) {
     struct Context ctx;
 	memset(&ctx, 0, sizeof(ctx));
 

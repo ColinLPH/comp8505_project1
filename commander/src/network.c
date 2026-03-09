@@ -1,8 +1,6 @@
 #include "network.h"
 
 #include <arpa/inet.h>
-#include <linux/filter.h>
-#include <linux/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
 #include <stdio.h>
@@ -22,6 +20,9 @@
 #define IP_FRAG_OFF 0
 #define IP_HDR_TOS 0
 #define IP_HDR_TTL 64
+
+#define MIN_SEND_PKT_WAIT 200
+#define USEC_TO_SEC 1000000
 
 int setup_covert_fd(void) {
     const int fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
@@ -87,10 +88,9 @@ unsigned short checksum(void *b, int len) {
     return (unsigned short) (~sum);
 }
 
-void print_packet_info(uint8_t *packet) {
-    struct iphdr *ip = (struct iphdr *)packet;
-    struct udphdr *udp = (struct udphdr *)(packet + sizeof(struct iphdr));
-    uint8_t *payload = (uint8_t *)udp + sizeof(struct udphdr);
+void print_packet_info(const uint8_t *packet) {
+    const struct iphdr *ip = (struct iphdr *)packet;
+    const struct udphdr *udp = (struct udphdr *)(packet + sizeof(struct iphdr));
 
     char src_ip[INET_ADDRSTRLEN];
     char dst_ip[INET_ADDRSTRLEN];
@@ -98,9 +98,9 @@ void print_packet_info(uint8_t *packet) {
     inet_ntop(AF_INET, &ip->saddr, src_ip, INET_ADDRSTRLEN);
     inet_ntop(AF_INET, &ip->daddr, dst_ip, INET_ADDRSTRLEN);
 
-    uint16_t ip_len = ntohs(ip->tot_len);
-    uint16_t udp_len = ntohs(udp->len);
-    uint16_t payload_len = udp_len - sizeof(struct udphdr);
+    const uint16_t ip_len = ntohs(ip->tot_len);
+    const uint16_t udp_len = ntohs(udp->len);
+    const uint16_t payload_len = udp_len - sizeof(struct udphdr);
 
     printf("-----------------------Packet Info-----------------------\n");
 
@@ -120,16 +120,7 @@ void print_packet_info(uint8_t *packet) {
     printf("  Dest Port      : %u\n", ntohs(udp->dest));
     printf("  Length         : %u\n", udp_len);
 
-    // printf("\nPayload (%u bytes):\n", payload_len);
-    // for (uint16_t i = 0; i < payload_len; i++) {
-    //     printf("%02x ", payload[i]);
-    //     if ((i + 1) % 16 == 0)
-    //         printf("\n");
-    // }
-    //
-    // if (payload_len % 16 != 0)
-    //     printf("\n");
-
+    printf("\nPayload Length: %u\n", payload_len);
     printf("---------------------------------------------------------\n");
 }
 
@@ -177,7 +168,7 @@ int send_packet(struct Context *ctx, const char *ip_src_addr) {
 
     struct timespec sleep_time;
     sleep_time.tv_sec = 0;
-    sleep_time.tv_nsec = (rand_u8(ctx) + 500) * 1000000;
+    sleep_time.tv_nsec = (rand_u8(ctx) + MIN_SEND_PKT_WAIT) * USEC_TO_SEC;
 
     printf("Sleep time: %zu milliseconds\n", sleep_time.tv_nsec / 1000000);
     nanosleep(&sleep_time, NULL);
