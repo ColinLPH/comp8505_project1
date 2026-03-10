@@ -21,5 +21,7 @@ int main(int argc, char *argv[]) {
 		memset(&ctx, 0, sizeof(ctx));
 	}
 
+	close(ctx.covert_fd);
+
     return 0;
 }

