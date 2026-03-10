@@ -1,21 +1,12 @@
 #include "network.h"
 
 #include <arpa/inet.h>
-#include <errno.h>
-#include <linux/filter.h>
-#include <linux/socket.h>
-#include <linux/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/time.h>
 #include <time.h>
+#include <sys/socket.h>
 #include <unistd.h>
-
 
 #define PKT_MAX_LEN 4096
 #define IP_VERSION 4
@@ -24,10 +15,12 @@
 #define IP_HDR_TOS 0
 #define IP_HDR_TTL 64
 
+#define MIN_SEND_PKT_WAIT 250
+#define USEC_TO_SEC 1000000
+
 void print_packet_info(uint8_t *packet) {
     struct iphdr *ip = (struct iphdr *)packet;
     struct udphdr *udp = (struct udphdr *)(packet + sizeof(struct iphdr));
-    uint8_t *payload = (uint8_t *)udp + sizeof(struct udphdr);
 
     char src_ip[INET_ADDRSTRLEN];
     char dst_ip[INET_ADDRSTRLEN];
@@ -60,13 +53,13 @@ void print_packet_info(uint8_t *packet) {
 }
 
 int setup_covert_fd() {
-    int fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
+    const int fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
     if (fd == -1) {
         fprintf(stderr, "covert socket() failed\n");
         return -1;
     }
 
-    int one = 1;
+    const int one = 1;
     if (setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0) {
         fprintf(stderr, "setsockopt(IPPROTO_IP, IP_HDRINCL) failed\n");
         return -1;
@@ -121,12 +114,24 @@ int send_packet(struct Context *ctx, const char *ip_src_addr) {
     dest.sin_port = htons(COVERT_CHAN);
     dest.sin_addr.s_addr = ip->daddr;
 
-    int ret = sendto(ctx->covert_fd, packet, pkt_len, 0, (struct sockaddr *)&dest, sizeof(dest));
+    const ssize_t ret = sendto(ctx->covert_fd, packet, pkt_len, 0, (struct sockaddr *)&dest, sizeof(dest));
     if (ret <= 0) {
         fprintf(stderr, "sento error\n");
     }
     print_packet_info(packet);
-    (ctx->cmd_seq_num)++;
+
+    if (ctx->cmd_seq_num == UINT16_MAX) {
+        ctx->cmd_seq_num = 0;
+    } else {
+        (ctx->cmd_seq_num)++;
+    }
+
+    struct timespec sleep_time;
+    sleep_time.tv_sec = 0;
+    sleep_time.tv_nsec = (rand_u8(ctx) + MIN_SEND_PKT_WAIT) * USEC_TO_SEC;
+
+    printf("Sleep time: %zu milliseconds\n", sleep_time.tv_nsec / 1000000);
+    nanosleep(&sleep_time, NULL);
 
     return 0;
 }

