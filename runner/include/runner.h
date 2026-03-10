@@ -40,7 +40,7 @@ int rep_req_file_data(struct Context *ctx);
 
 int cmd_send_file_name(struct Context *ctx, struct List *list);
 
-int cmd_start_kl(struct Context *ctx, struct List *list);
+int cmd_start_kl(struct Context *ctx);
 int cmd_start_watch_file(struct Context *ctx, struct List *list);
 int cmd_start_watch_dir(struct Context *ctx, struct List *list);
 int cmd_stop(struct Context *ctx);

